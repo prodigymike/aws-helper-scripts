@@ -4,43 +4,34 @@
 source $(dirname $0)/../inc/ec2-include
 
 if [ ! $1 ]; then
-  echo "Usage: $(basename $0) IP"
+  echo "Usage: $(basename $0) IP_ADDRESS"
   echo
-  echo "           IP - The elastic IP to attach to this instance. "
-  echo "                Specifying \"new\" will create a new IP and attach it to this instance. "
+  echo "           IP_ADDRESS - The elastic IP to attach to this instance. "
   exit
 fi
 
-IP=$1
+IP_ADDRESS=$1
+ATTACHED_INSTANCE=$(aws ec2 describe-addresses --filters "Name=public-ip,Values=$IP_ADDRESS" --query Addresses[0].InstanceId --output text)
 
-ATTACHED_IP=( $(i-describe-address) )
+function associate-address {
+  echo "Attaching IP Address $IP_ADDRESS ..."
+  aws ec2 associate-address --instance-id $INSTANCE_ID --public-ip $IP_ADDRESS
+}
 
-# If an Elastic IP is already attached to this EC2 instance.
-if [ ! -z "${ATTACHED_IP[1]}" ]; then
-  echo "This EC2 instance already has an elastic IP (${ATTACHED_IP[1]}) associated."
-  echo "First disassociate it with 'i-disassociate-address'"
-  exit
+if [ "$PUBLIC_IP" = "$IP_ADDRESS" ]; then
+  echo "address $IP_ADDRESS is already associated with this this instance"
+  exit 0
+elif [ -n "$PUBLIC_IP" ]; then
+  echo "this instance is already associated with another IP: $PUBLIC_IP"
+  echo "$IP_ADDRESS will be the new address after it is attached"
+  associate-address
+elif [ ! "$ATTACHED_INSTANCE" = "None" ]; then
+  echo "address $IP_ADDRESS is already associated with instance $ATTACHED_INSTANCE"
+  echo "disassociate it from instance $ATTACHED_INSTANCE before running this script again"
+  exit 1
 else
-  # If the user specified they want a new Elastic IP created
-  if [ $IP == "new" ]; then
-    echo "Creating IP Address..."
-    OUTPUT=( $(ec2-allocate-address) )
-    echo ${OUTPUT[*]}
-    IP=${OUTPUT[1]}
-    echo
-  else
-    # If the Elastic IP is associated to another EC2 instance
-    IPS_INSTANCE_ID=( $(ec2-describe-addresses | grep "ADDRESS" | grep $IP) )
-
-    if [[ ${IPS_INSTANCE_ID[2]} == *i-* ]]; then
-      echo "That Elastic IP is already associated to another EC2 instance (${IPS_INSTANCE_ID[2]})."
-      exit
-    fi
-  fi
+  associate-address
 fi
-
-echo "Attaching IP Address..."
-ec2-associate-address -i $INSTANCE_ID $IP
 
 # Make the script wait until the network connection is back up before we continue.
 perl -MIO::Socket::INET -e 'until(new IO::Socket::INET("169.254.169.254:80")){print"Waiting for network connection after associating an Elastic IP...\n";sleep 1}'

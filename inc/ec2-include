@@ -14,7 +14,7 @@ CURL_META_DATA="curl --retry 3 --silent --show-error --fail -L http://169.254.16
 INSTANCE_ID=$($CURL_META_DATA/meta-data/instance-id)
 REGION=$($CURL_META_DATA/dynamic/instance-identity/document|grep region|awk -F\" '{print $4}')
 AVAILABILITY_ZONE=$($CURL_META_DATA/meta-data/placement/availability-zone)
-IP=$($CURL_META_DATA/meta-data/public-ipv4)
+PUBLIC_IP=$($CURL_META_DATA/meta-data/public-ipv4)
 PRIVATE_IP=$($CURL_META_DATA/meta-data/local-ipv4)
 
 echo "Setting AWS CLI Region to $REGION"
