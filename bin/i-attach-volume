@@ -31,12 +31,6 @@ if [ -d "$MOUNT_POINT" ]; then
   exit 1
 fi
 
-# Tag this EBS volume
-echo "Adding tags to the EBS volume..."
-INSTANCE_NAME=$(aws ec2 describe-tags --filters "Name=resource-id,Values=$INSTANCE_ID" --query 'Tags[?Key==`Name`].Value' --output text)
-aws ec2 create-tags --resources $VOLUME_ID --tags Key=InstanceName,Value=$INSTANCE_NAME Key=MountPoint,Value=$MOUNT_POINT
-echo
-
 # Check if volume is already attached to an instance
 VOLUME_ATTACHED=$(aws ec2 describe-volumes --volume-id $VOLUME_ID --query Volumes[0].Attachments[0].InstanceId --output text)
 
