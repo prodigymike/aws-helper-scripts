@@ -1,5 +1,5 @@
 #!/bin/bash
-set +x
+set -x
 # Attach, Format and Persistently Mount an EBS Volume
 source $(dirname $0)/../inc/ec2-include
 
