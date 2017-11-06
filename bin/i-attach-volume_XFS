@@ -1,0 +1,88 @@
+#!/bin/bash
+set +x
+# Attach, Format and Persistently Mount an EBS Volume
+source $(dirname $0)/../inc/ec2-include
+
+if [ ! $3 ]; then
+  echo "Usage: $(basename $0) VOLUME_ID DEVICE MOUNT_POINT"
+  echo
+  echo "        VOLUME_ID - The Volume ID of the EBS volume you'd like to attach to this ec2 instance."
+  echo "           DEVICE - The device location on the EC2 instance that you would like the EBS volume attached to. (E.g. /dev/sdf)"               
+  echo "      MOUNT_POINT - The location you would like the EBS Volume mounted to. (E.g. /mnt/ebs)"
+  exit
+fi
+
+VOLUME_ID=$1
+DEVICE=$2
+MOUNT_POINT=$3
+FORMAT=xfs #we presently only support Ext4 filesystem
+INTERNAL_DEVICE_NAME=/dev/xvd$(echo "${DEVICE: -1}")
+
+if [ -b "$INTERNAL_DEVICE_NAME" ]; then
+  echo "Error: The device name you specified: $DEVICE is already in use."
+  echo "        Please choose an available device name."
+  exit 1
+fi
+
+if [ -d "$MOUNT_POINT" ]; then
+  echo "Error: The mount point you specified ($MOUNT_POINT) already contains a directory"
+  echo "         please ensure an EBS volume isn't already mounted at that location by checking"
+  echo "         the output of the 'df' command. Otherwise if the directory is empty remove"
+  echo "         it and try reattaching this EBS volume."
+  exit 1
+fi
+
+# Check if volume is already attached to an instance
+VOLUME_ATTACHED=$(aws ec2 describe-volumes --volume-id $VOLUME_ID --query Volumes[0].Attachments[0].InstanceId --output text)
+
+# Check if volume is attached to this instance
+if [ "$VOLUME_ATTACHED" = "$INSTANCE_ID" ]; then
+  echo "Error: Volume is already atached to this instance."
+  exit 1
+
+# Check if volume is attached to another instance
+elif [ ! "$VOLUME_ATTACHED" = "None" ]; then
+  echo "Error: Volume is already attached to $VOLUME_ATTACHED"
+  exit 1
+
+# Attach volume
+else
+  echo "Attaching EBS Volume..."
+  aws ec2 attach-volume --volume-id $VOLUME_ID --instance-id $INSTANCE_ID --device $DEVICE
+  echo
+  # Wait for the volume to be attached before we format and mount it
+  while [ ! -e $INTERNAL_DEVICE_NAME ]; do sleep 1; done
+fi
+
+file -s $INTERNAL_DEVICE_NAME |grep $FORMAT >/dev/null 2>&1
+if [ $? -eq 0 ]; then
+  echo "Volume already formatted with $FORMAT filesystem..."
+else
+  echo "Formatting the device with an $FORMAT filesystem..."
+  mkfs -t $FORMAT $INTERNAL_DEVICE_NAME
+  echo
+fi
+
+# Check /etc/fstab for existin mount point entry
+FSTAB_CONTENT=$(grep " $MOUNT_POINT " /etc/fstab);
+
+if [ "$FSTAB_CONTENT" ]; then
+  echo "Entry already exists in /etc/fstab for $MOUNT_POINT:"
+  echo "$FSTAB_CONTENT"
+else
+  echo "Adding mount point '$MOUNT_POINT' to '/etc/fstab'..."
+  echo "$INTERNAL_DEVICE_NAME $MOUNT_POINT ext4 noatime 0 0" >> /etc/fstab
+fi
+
+#TODO: Add the ability to automate Volume Snapshots 
+# # Add cron entry to perform EBS Snapshots of this Volume
+# echo "Adding cron entry for ec2-consistent-snapshot to '/etc/cron.d/snapshot-ebs'..."
+# echo "42 * * * * root bash -c '((i-snapshot-volume $MOUNT_POINT mysql true \"automated backup\" 2>&1 1>&3 | tee >(logger -p cron.err -t \"i-snapshot-volume $MOUNT_POINT\")) 3>&1 1>&2) > >(logger -p cron.info -t \"i-snapshot-volume $MOUNT_POINT\") 2>&1'" >> /etc/cron.d/snapshot-ebs
+# echo
+
+if [ ! -d "$MOUNT_POINT" ]; then 
+  echo "Creating mount point $MOUNT_POINT"
+  mkdir -p $MOUNT_POINT
+fi
+echo "Mounting $MOUNT_POINT"
+mount $MOUNT_POINT
