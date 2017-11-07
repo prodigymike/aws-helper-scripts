@@ -1,5 +1,5 @@
 #!/bin/bash
-set -x
+#set -x
 # Attach, Format and Persistently Mount an EBS Volume
 source $(dirname $0)/../inc/ec2-include
 
@@ -15,10 +15,11 @@ fi
 VOLUME_ID=$1
 DEVICE=$2
 MOUNT_POINT=$3
-FORMAT=xfs #we presently only support Ext4 filesystem
+FORMAT=xfs #we presently only support XFS filesystem
 INTERNAL_DEVICE_NAME=/dev/xvd$(echo "${DEVICE: -1}")
 
 if [ -b "$INTERNAL_DEVICE_NAME" ]; then
+  echo " $INTERNAL_DEVICE_NAME "
   echo "Error: The device name you specified: $DEVICE is already in use."
   echo "        Please choose an available device name."
   exit 1
@@ -54,6 +55,7 @@ else
   while [ ! -e $INTERNAL_DEVICE_NAME ]; do sleep 1; done
 fi
 
+# Format, if already XFS should fail w/ "mkfs.xfs: /dev/xvdf appears to contain an existing filesystem (xfs)."
 file -s $INTERNAL_DEVICE_NAME |grep $FORMAT >/dev/null 2>&1
 if [ $? -eq 0 ]; then
   echo "Volume already formatted with $FORMAT filesystem..."
@@ -63,7 +65,7 @@ else
   echo
 fi
 
-# Check /etc/fstab for existin mount point entry
+# Check /etc/fstab for existing mount point entry
 FSTAB_CONTENT=$(grep " $MOUNT_POINT " /etc/fstab);
 
 if [ "$FSTAB_CONTENT" ]; then
@@ -71,7 +73,7 @@ if [ "$FSTAB_CONTENT" ]; then
   echo "$FSTAB_CONTENT"
 else
   echo "Adding mount point '$MOUNT_POINT' to '/etc/fstab'..."
-  echo "$INTERNAL_DEVICE_NAME $MOUNT_POINT ext4 noatime 0 0" >> /etc/fstab
+  echo "$INTERNAL_DEVICE_NAME $MOUNT_POINT xfs noatime 0 0" >> /etc/fstab
 fi
 
 #TODO: Add the ability to automate Volume Snapshots 
